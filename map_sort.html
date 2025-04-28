@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step-by-Step Route Optimizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .location-card {
+            transition: all 0.3s ease;
+        }
+        .location-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .nearest-badge {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid #3b82f6;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .link-input {
+            transition: all 0.3s ease;
+        }
+        .link-input:focus {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+        }
+        .progress-step {
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-weight: bold;
+        }
+        .progress-step.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .progress-step.completed {
+            background-color: #10b981;
+            color: white;
+        }
+        .progress-step.inactive {
+            background-color: #e5e7eb;
+            color: #6b7280;
+        }
+        .progress-line {
+            height: 2px;
+            flex-grow: 1;
+            background-color: #e5e7eb;
+        }
+        .progress-line.active {
+            background-color: #3b82f6;
+        }
+        .progress-line.completed {
+            background-color: #10b981;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-gray-800 mb-2">Step-by-Step Route Optimizer</h1>
+                <p class="text-gray-600">Add locations one by one to create your optimized route</p>
+            </div>
+
+            <!-- Progress Steps -->
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center">
+                    <div class="progress-step active">
+                        <i class="fas fa-location-arrow"></i>
+                    </div>
+                    <div class="progress-line inactive"></div>
+                    <div class="progress-step inactive">1</div>
+                    <div class="progress-line inactive"></div>
+                    <div class="progress-step inactive">2</div>
+                    <div class="progress-line inactive"></div>
+                    <div class="progress-step inactive">3</div>
+                    <div class="progress-line inactive"></div>
+                    <div class="progress-step inactive">
+                        <i class="fas fa-route"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Location Card -->
+            <div id="currentLocationCard" class="bg-white rounded-lg shadow-md p-4 mb-6">
+                <div class="flex items-center">
+                    <div class="mr-3">
+                        <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                            <i class="fas fa-location-arrow text-blue-500"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-medium text-gray-800">Your Current Location</h3>
+                        <p id="currentLocationText" class="text-sm text-gray-600">Detecting your location...</p>
+                    </div>
+                </div>
+                <div id="locationLoading" class="mt-3 flex justify-center">
+                    <div class="loading-spinner"></div>
+                </div>
+                <div id="locationError" class="hidden mt-3 bg-red-50 border-l-4 border-red-500 p-3 text-sm">
+                    <div class="flex">
+                        <div class="flex-shrink-0 text-red-500">
+                            <i class="fas fa-exclamation-circle"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-red-700">Unable to detect your location. Using default order.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Location Section -->
+            <div id="addLocationSection" class="bg-white rounded-lg shadow-md p-6 mb-8 hidden">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Add a Location</h2>
+                
+                <div class="mb-4">
+                    <label for="locationName" class="block text-sm font-medium text-gray-700 mb-2">
+                        Location Name (optional):
+                    </label>
+                    <input type="text" id="locationName" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 link-input" placeholder="E.g. Coffee Shop, Office, etc.">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="singleLocationLink" class="block text-sm font-medium text-gray-700 mb-2">
+                        Paste a location link:
+                    </label>
+                    <input type="text" id="singleLocationLink" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 link-input" placeholder="https://maps.app.goo.gl/...">
+                    <p class="text-xs text-gray-500 mt-1">Supports Google Maps, Waze, and 2GIS links</p>
+                </div>
+                
+                <div class="flex flex-wrap gap-3">
+                    <button id="addLocationBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center">
+                        <i class="fas fa-plus mr-2"></i> Add Location
+                    </button>
+                    <button id="finishAddingBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 hidden">
+                        <i class="fas fa-check mr-2"></i> Finish Adding
+                    </button>
+                    <button id="cancelAddBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Added Locations Section -->
+            <div id="addedLocationsSection" class="bg-white rounded-lg shadow-md p-6 mb-8 hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800">Your Locations</h2>
+                    <button id="addMoreLocationsBtn" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-sm flex items-center">
+                        <i class="fas fa-plus mr-1"></i> Add More
+                    </button>
+                </div>
+                
+                <div id="addedLocationsContainer" class="space-y-3">
+                    <!-- Added locations will appear here -->
+                </div>
+                
+                <div class="mt-4 flex justify-end">
+                    <button id="optimizeRouteBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center">
+                        <i class="fas fa-route mr-2"></i> Optimize Route
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800">Optimized Route</h2>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-600">Travel mode:</span>
+                        <div class="inline-flex rounded-md shadow-sm">
+                            <button id="modeDrive" class="px-3 py-1 text-sm font-medium rounded-l-md bg-blue-500 text-white">
+                                <i class="fas fa-car mr-1"></i> Drive
+                            </button>
+                            <button id="modeWalk" class="px-3 py-1 text-sm font-medium rounded-r-md bg-gray-200 text-gray-700">
+                                <i class="fas fa-walking mr-1"></i> Walk
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Locations List -->
+                <div id="locationsContainer" class="space-y-3 mb-6">
+                    <!-- Locations will be inserted here -->
+                </div>
+
+                <!-- Route Summary -->
+                <div id="routeSummary" class="bg-white rounded-lg shadow-md p-5">
+                    <h3 class="font-semibold text-lg text-gray-800 mb-3">Route Summary</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div class="bg-blue-50 p-3 rounded-lg">
+                            <p class="text-sm text-gray-600">Total Distance</p>
+                            <p id="totalDistance" class="text-xl font-bold text-blue-600">0 km</p>
+                        </div>
+                        <div class="bg-blue-50 p-3 rounded-lg">
+                            <p class="text-sm text-gray-600">Estimated Time</p>
+                            <p id="totalTime" class="text-xl font-bold text-blue-600">0 min</p>
+                        </div>
+                        <div class="bg-blue-50 p-3 rounded-lg">
+                            <p class="text-sm text-gray-600">Locations</p>
+                            <p id="totalLocations" class="text-xl font-bold text-blue-600">0</p>
+                        </div>
+                    </div>
+                    <h4 class="font-medium text-gray-700 mb-2">Route Steps:</h4>
+                    <ol id="routeSteps" class="list-decimal list-inside space-y-2 text-gray-700">
+                        <!-- Route steps will be inserted here -->
+                    </ol>
+                </div>
+                
+                <div class="mt-6 flex justify-center">
+                    <button id="startNewRouteBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 flex items-center">
+                        <i class="fas fa-redo mr-2"></i> Start New Route
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Start Button -->
+            <div id="startSection" class="text-center">
+                <button id="startAddingBtn" class="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-lg font-medium flex items-center mx-auto">
+                    <i class="fas fa-plus-circle mr-2"></i> Start Adding Locations
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM elements
+        const startSection = document.getElementById('startSection');
+        const startAddingBtn = document.getElementById('startAddingBtn');
+        const addLocationSection = document.getElementById('addLocationSection');
+        const addedLocationsSection = document.getElementById('addedLocationsSection');
+        const addedLocationsContainer = document.getElementById('addedLocationsContainer');
+        const addMoreLocationsBtn = document.getElementById('addMoreLocationsBtn');
+        const optimizeRouteBtn = document.getElementById('optimizeRouteBtn');
+        const startNewRouteBtn = document.getElementById('startNewRouteBtn');
+        const locationNameInput = document.getElementById('locationName');
+        const singleLocationLinkInput = document.getElementById('singleLocationLink');
+        const addLocationBtn = document.getElementById('addLocationBtn');
+        const finishAddingBtn = document.getElementById('finishAddingBtn');
+        const cancelAddBtn = document.getElementById('cancelAddBtn');
+        const currentLocationText = document.getElementById('currentLocationText');
+        const locationLoading = document.getElementById('locationLoading');
+        const locationError = document.getElementById('locationError');
+        const resultsSection = document.getElementById('resultsSection');
+        const locationsContainer = document.getElementById('locationsContainer');
+        const routeSummary = document.getElementById('routeSummary');
+        const totalDistance = document.getElementById('totalDistance');
+        const totalTime = document.getElementById('totalTime');
+        const totalLocations = document.getElementById('totalLocations');
+        const routeSteps = document.getElementById('routeSteps');
+        const modeDriveBtn = document.getElementById('modeDrive');
+        const modeWalkBtn = document.getElementById('modeWalk');
+
+        // Progress step elements
+        const progressSteps = document.querySelectorAll('.progress-step');
+        const progressLines = document.querySelectorAll('.progress-line');
+
+        // Global variables
+        let userLocation = null;
+        let addedLocations = [];
+        let travelMode = 'driving';
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set up event listeners
+            startAddingBtn.addEventListener('click', startAddingLocations);
+            addLocationBtn.addEventListener('click', addLocation);
+            addMoreLocationsBtn.addEventListener('click', showAddLocationForm);
+            optimizeRouteBtn.addEventListener('click', optimizeRoute);
+            startNewRouteBtn.addEventListener('click', startNewRoute);
+            finishAddingBtn.addEventListener('click', finishAddingLocations);
+            cancelAddBtn.addEventListener('click', cancelAdding);
+            modeDriveBtn.addEventListener('click', () => setTravelMode('driving'));
+            modeWalkBtn.addEventListener('click', () => setTravelMode('walking'));
+
+            // Try to get user's current location
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        currentLocationText.textContent = `Latitude: ${userLocation.lat.toFixed(4)}, Longitude: ${userLocation.lng.toFixed(4)}`;
+                        locationLoading.classList.add('hidden');
+                    },
+                    error => {
+                        console.error("Error getting location:", error);
+                        locationLoading.classList.add('hidden');
+                        locationError.classList.remove('hidden');
+                    }
+                );
+            } else {
+                locationLoading.classList.add('hidden');
+                locationError.classList.remove('hidden');
+            }
+        });
+
+        // Start adding locations
+        function startAddingLocations() {
+            startSection.classList.add('hidden');
+            addLocationSection.classList.remove('hidden');
+            updateProgress(1);
+        }
+
+        // Show add location form
+        function showAddLocationForm() {
+            addedLocationsSection.classList.add('hidden');
+            addLocationSection.classList.remove('hidden');
+            locationNameInput.value = '';
+            singleLocationLinkInput.value = '';
+            updateProgress(1);
+        }
+
+        // Add a new location
+        function addLocation() {
+            const link = singleLocationLinkInput.value.trim();
+            if (!link) {
+                alert("Please paste a location link");
+                return;
+            }
+
+            const name = locationNameInput.value.trim() || `Location ${addedLocations.length + 1}`;
+            
+            // Extract location data
+            const locationData = extractLocationData(link, addedLocations.length + 1);
+            locationData.name = name;
+            
+            // Add to locations array
+            addedLocations.push(locationData);
+            
+            // Update UI
+            displayAddedLocations();
+            
+            // Hide add form and show locations list
+            addLocationSection.classList.add('hidden');
+            addedLocationsSection.classList.remove('hidden');
+            
+            // Show finish button if at least one location added
+            if (addedLocations.length >= 1) {
+                finishAddingBtn.classList.remove('hidden');
+            }
+            
+            updateProgress(2);
+        }
+
+        // Finish adding locations and show optimize button
+        function finishAddingLocations() {
+            addLocationSection.classList.add('hidden');
+            addedLocationsSection.classList.remove('hidden');
+            updateProgress(3);
+        }
+
+        // Cancel adding locations
+        function cancelAdding() {
+            if (addedLocations.length === 0) {
+                // No locations added yet, go back to start
+                addLocationSection.classList.add('hidden');
+                startSection.classList.remove('hidden');
+                updateProgress(0);
+            } else {
+                // Already have locations, go back to locations list
+                addLocationSection.classList.add('hidden');
+                addedLocationsSection.classList.remove('hidden');
+                updateProgress(2);
+            }
+        }
+
+        // Display added locations in the list
+        function displayAddedLocations() {
+            addedLocationsContainer.innerHTML = '';
+            
+            addedLocations.forEach((location, index) => {
+                const locationCard = document.createElement('div');
+                locationCard.className = `location-card bg-white rounded-lg shadow p-4 border border-gray-200`;
+                locationCard.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-medium text-gray-800">${location.name}</h3>
+                            <p class="text-xs text-gray-500">Coordinates: ${location.coordinates.lat.toFixed(6)}, ${location.coordinates.lng.toFixed(6)}</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-full">#${index + 1}</span>
+                            <button onclick="removeLocation(${index})" class="text-red-500 hover:text-red-700">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                        ${location.googleMapsLink ? `
+                            <a href="${location.googleMapsLink}" target="_blank" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded flex items-center">
+                                <i class="fab fa-google mr-1"></i> Maps
+                            </a>
+                        ` : ''}
+                        ${location.wazeLink ? `
+                            <a href="${location.wazeLink}" target="_blank" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded flex items-center">
+                                <i class="fab fa-waze mr-1"></i> Waze
+                            </a>
+                        ` : ''}
+                        ${location.twoGisLink ? `
+                            <a href="${location.twoGisLink}" target="_blank" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded flex items-center">
+                                <i class="fas fa-map mr-1"></i> 2GIS
+                            </a>
+                        ` : ''}
+                    </div>
+                `;
+                addedLocationsContainer.appendChild(locationCard);
+            });
+        }
+
+        // Remove a location
+        function removeLocation(index) {
+            addedLocations.splice(index, 1);
+            displayAddedLocations();
+            
+            // Hide finish button if no locations left
+            if (addedLocations.length === 0) {
+                finishAddingBtn.classList.add('hidden');
+            }
+        }
+
+        // Optimize the route
+        function optimizeRoute() {
+            if (addedLocations.length === 0) {
+                alert("Please add at least one location");
+                return;
+            }
+
+            // If we have user location, sort by distance
+            if (userLocation) {
+                sortLocationsByDistance();
+            } else {
+                // Just display in original order
+                displayOptimizedLocations(addedLocations);
+            }
+
+            addedLocationsSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+            updateProgress(4);
+        }
+
+        // Extract location data from different types of links
+        function extractLocationData(link, index) {
+            let name = `Location ${index}`;
+            let coordinates = null;
+            let googleMapsLink = '';
+            let wazeLink = '';
+            let twoGisLink = '';
+
+            // Google Maps link
+            if (link.includes('goo.gl') || link.includes('google.com') || link.includes('maps.app')) {
+                googleMapsLink = link;
+                // Try to extract coordinates (simplified for demo)
+                const coordMatch = link.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || 
+                                  link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+                if (coordMatch) {
+                    coordinates = {
+                        lat: parseFloat(coordMatch[1]),
+                        lng: parseFloat(coordMatch[2])
+                    };
+                }
+            }
+            // Waze link
+            else if (link.includes('waze.com')) {
+                wazeLink = link;
+                // Try to extract coordinates
+                const coordMatch = link.match(/ll=(-?\d+\.\d+)%2C(-?\d+\.\d+)/);
+                if (coordMatch) {
+                    coordinates = {
+                        lat: parseFloat(coordMatch[1]),
+                        lng: parseFloat(coordMatch[2])
+                    };
+                }
+            }
+            // 2GIS link
+            else if (link.includes('2gis.com')) {
+                twoGisLink = link;
+                // Try to extract coordinates (simplified)
+                const coordMatch = link.match(/\/(\d+\.\d+)\/(\d+\.\d+)/);
+                if (coordMatch) {
+                    coordinates = {
+                        lat: parseFloat(coordMatch[1]),
+                        lng: parseFloat(coordMatch[2])
+                    };
+                }
+            }
+
+            // If we couldn't extract coordinates, try to geocode (would need API in real app)
+            // For demo, we'll just use dummy coordinates if none found
+            if (!coordinates) {
+                coordinates = {
+                    lat: 25.0 + Math.random() * 0.5,
+                    lng: 55.0 + Math.random() * 0.5
+                };
+            }
+
+            return {
+                id: index,
+                name,
+                coordinates,
+                googleMapsLink,
+                wazeLink,
+                twoGisLink,
+                originalLink: link
+            };
+        }
+
+        // Sort locations by distance from user
+        function sortLocationsByDistance() {
+            if (!userLocation) return;
+
+            addedLocations.sort((a, b) => {
+                const distA = calculateDistance(
+                    userLocation.lat, userLocation.lng,
+                    a.coordinates.lat, a.coordinates.lng
+                );
+                const distB = calculateDistance(
+                    userLocation.lat, userLocation.lng,
+                    b.coordinates.lat, b.coordinates.lng
+                );
+                return distA - distB;
+            });
+
+            displayOptimizedLocations(addedLocations);
+        }
+
+        // Display optimized locations in the UI
+        function displayOptimizedLocations(locations) {
+            locationsContainer.innerHTML = '';
+            totalLocations.textContent = locations.length;
+
+            locations.forEach((location, index) => {
+                const distance = userLocation ? 
+                    calculateDistance(
+                        userLocation.lat, userLocation.lng,
+                        location.coordinates.lat, location.coordinates.lng
+                    ).toFixed(1) + ' km' : 
+                    'Distance unknown';
+
+                const locationCard = document.createElement('div');
+                locationCard.className = `location-card bg-white rounded-lg shadow p-4 relative ${index === 0 && userLocation ? 'border-2 border-blue-400' : ''}`;
+                locationCard.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <h3 class="font-medium text-gray-800">${location.name}</h3>
+                        ${userLocation ? `<span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">${distance}</span>` : ''}
+                    </div>
+                    <p class="text-xs text-gray-500 mb-3">Coordinates: ${location.coordinates.lat.toFixed(6)}, ${location.coordinates.lng.toFixed(6)}</p>
+                    <div class="flex flex-wrap gap-2">
+                        ${location.googleMapsLink ? `
+                            <a href="${location.googleMapsLink}" target="_blank" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded flex items-center">
+                                <i class="fab fa-google mr-1"></i> Maps
+                            </a>
+                        ` : ''}
+                        ${location.wazeLink ? `
+                            <a href="${location.wazeLink}" target="_blank" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded flex items-center">
+                                <i class="fab fa-waze mr-1"></i> Waze
+                            </a>
+                        ` : ''}
+                        ${location.twoGisLink ? `
+                            <a href="${location.twoGisLink}" target="_blank" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded flex items-center">
+                                <i class="fas fa-map mr-1"></i> 2GIS
+                            </a>
+                        ` : ''}
+                        <button onclick="navigator.clipboard.writeText('${location.originalLink}')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded flex items-center">
+                            <i class="fas fa-copy mr-1"></i> Copy
+                        </button>
+                    </div>
+                    ${index === 0 && userLocation ? `<div class="absolute top-0 right-0 bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded-bl-lg rounded-tr-lg nearest-badge">NEAREST</div>` : ''}
+                `;
+                locationsContainer.appendChild(locationCard);
+            });
+
+            calculateRouteSummary(locations);
+        }
+
+        // Calculate distance between two coordinates (Haversine formula)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Calculate route summary (simplified for demo)
+        function calculateRouteSummary(locations) {
+            if (!userLocation || locations.length === 0) {
+                routeSummary.classList.add('hidden');
+                return;
+            }
+
+            let totalDistanceKm = 0;
+            let totalTimeMinutes = 0;
+            
+            // Calculate distance from user to first location
+            const firstLocation = locations[0];
+            let distance = calculateDistance(
+                userLocation.lat, userLocation.lng,
+                firstLocation.coordinates.lat, firstLocation.coordinates.lng
+            );
+            totalDistanceKm += distance;
+            totalTimeMinutes += distance / (travelMode === 'driving' ? 0.05 : 0.02); // Simplified time calculation
+            
+            // Calculate distances between locations
+            for (let i = 1; i < locations.length; i++) {
+                const prevLocation = locations[i-1];
+                const currentLocation = locations[i];
+                
+                distance = calculateDistance(
+                    prevLocation.coordinates.lat, prevLocation.coordinates.lng,
+                    currentLocation.coordinates.lat, currentLocation.coordinates.lng
+                );
+                totalDistanceKm += distance;
+                totalTimeMinutes += distance / (travelMode === 'driving' ? 0.05 : 0.02);
+            }
+            
+            // Update UI
+            totalDistance.textContent = `${totalDistanceKm.toFixed(1)} km`;
+            totalTime.textContent = `${Math.round(totalTimeMinutes)} min (${travelMode})`;
+            
+            // Generate route steps
+            routeSteps.innerHTML = '';
+            
+            // Add starting point
+            const startStep = document.createElement('li');
+            startStep.className = 'mb-2';
+            startStep.innerHTML = `<span class="font-medium">Start</span> from your current location`;
+            routeSteps.appendChild(startStep);
+            
+            // Add each location as a step
+            locations.forEach((location, index) => {
+                const step = document.createElement('li');
+                step.className = 'mb-2';
+                
+                const distanceFromPrev = index === 0 ? 
+                    calculateDistance(
+                        userLocation.lat, userLocation.lng,
+                        location.coordinates.lat, location.coordinates.lng
+                    ) :
+                    calculateDistance(
+                        locations[index-1].coordinates.lat, locations[index-1].coordinates.lng,
+                        location.coordinates.lat, location.coordinates.lng
+                    );
+                
+                const timeFromPrev = distanceFromPrev / (travelMode === 'driving' ? 0.05 : 0.02);
+                
+                step.innerHTML = `
+                    <span class="font-medium">${index + 1}.</span> 
+                    <span class="text-blue-600">${location.name}</span> 
+                    <span class="text-xs bg-gray-100 px-2 py-1 rounded ml-1">${distanceFromPrev.toFixed(1)} km (~${Math.round(timeFromPrev)} min)</span>
+                `;
+                routeSteps.appendChild(step);
+            });
+            
+            routeSummary.classList.remove('hidden');
+        }
+
+        // Set travel mode
+        function setTravelMode(mode) {
+            travelMode = mode;
+            if (mode === 'driving') {
+                modeDriveBtn.classList.add('bg-blue-500', 'text-white');
+                modeDriveBtn.classList.remove('bg-gray-200', 'text-gray-700');
+                modeWalkBtn.classList.remove('bg-blue-500', 'text-white');
+                modeWalkBtn.classList.add('bg-gray-200', 'text-gray-700');
+            } else {
+                modeWalkBtn.classList.add('bg-blue-500', 'text-white');
+                modeWalkBtn.classList.remove('bg-gray-200', 'text-gray-700');
+                modeDriveBtn.classList.remove('bg-blue-500', 'text-white');
+                modeDriveBtn.classList.add('bg-gray-200', 'text-gray-700');
+            }
+            
+            if (addedLocations.length > 0) {
+                calculateRouteSummary(addedLocations);
+            }
+        }
+
+        // Start a new route
+        function startNewRoute() {
+            addedLocations = [];
+            resultsSection.classList.add('hidden');
+            startSection.classList.remove('hidden');
+            updateProgress(0);
+        }
+
+        // Update progress steps
+        function updateProgress(activeStep) {
+            // Reset all steps
+            progressSteps.forEach((step, index) => {
+                step.classList.remove('active', 'completed');
+                step.classList.add('inactive');
+            });
+            
+            progressLines.forEach((line, index) => {
+                line.classList.remove('active', 'completed');
+                line.classList.add('inactive');
+            });
+            
+            // Update steps based on active step
+            if (activeStep >= 0) {
+                // Current location step
+                progressSteps[0].classList.remove('inactive');
+                progressSteps[0].classList.add('completed');
+                
+                if (activeStep >= 1) {
+                    progressLines[0].classList.remove('inactive');
+                    progressLines[0].classList.add('completed');
+                    
+                    progressSteps[1].classList.remove('inactive');
+                    progressSteps[1].classList.add(activeStep === 1 ? 'active' : 'completed');
+                    
+                    if (activeStep >= 2) {
+                        progressLines[1].classList.remove('inactive');
+                        progressLines[1].classList.add('completed');
+                        
+                        progressSteps[2].classList.remove('inactive');
+                        progressSteps[2].classList.add(activeStep === 2 ? 'active' : 'completed');
+                        
+                        if (activeStep >= 3) {
+                            progressLines[2].classList.remove('inactive');
+                            progressLines[2].classList.add('completed');
+                            
+                            progressSteps[3].classList.remove('inactive');
+                            progressSteps[3].classList.add(activeStep === 3 ? 'active' : 'completed');
+                            
+                            if (activeStep >= 4) {
+                                progressLines[3].classList.remove('inactive');
+                                progressLines[3].classList.add('completed');
+                                
+                                progressSteps[4].classList.remove('inactive');
+                                progressSteps[4].classList.add('completed');
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
